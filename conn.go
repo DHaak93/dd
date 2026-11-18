@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -48,6 +49,15 @@ var (
 	ErrTimeout = errors.New("RPC call timeout")
 	logger     = logrus.New()
 )
+
+// secretFieldRe matches JSON string fields that hold credentials or session
+// secrets, so they can be left out of debug logs.
+var secretFieldRe = regexp.MustCompile(`"((?i:phoneSecret|phonePassword|userPassword|sessionSecret|password))"\s*:\s*"[^"]*"`)
+
+// redactSecrets replaces the values of secret fields in a JSON document.
+func redactSecrets(s string) string {
+	return secretFieldRe.ReplaceAllString(s, `"$1":"REDACTED"`)
+}
 
 func init() {
 	logger.SetOutput(os.Stdout)
@@ -113,7 +123,7 @@ func (dc *Conn) SimpleRequest(arg SimpleRequest) error {
 
 	logger.WithFields(logrus.Fields{
 		"url":     url,
-		"payload": string(jsonBytes),
+		"payload": redactSecrets(string(jsonBytes)),
 	}).Debug("Sending request")
 
 	version := dc.Version
@@ -147,7 +157,7 @@ func (dc *Conn) SimpleRequest(arg SimpleRequest) error {
 
 	logger.WithFields(logrus.Fields{
 		"statusCode": resp.StatusCode,
-		"response":   string(responseBytes),
+		"response":   redactSecrets(string(responseBytes)),
 	}).Debug("Received HTTP response")
 	logger.Debugf("Response headers: %+v", resp.Header)
 
@@ -361,14 +371,11 @@ func (dc *Conn) Connect(cred Credential) error {
 	dc.sessionSecret = []byte(gresp.SessionSecret)
 	dc.nextAccess = crd.UserAccess.NextAccess
 
-	// Example of structured logging with a single field "basicInfo"
-	basicInfo := map[string]interface{}{
+	// The session secret is deliberately not logged.
+	logger.WithFields(logrus.Fields{
 		"sessionID": dc.sessionID,
-		"secret":    gresp.SessionSecret,
 		"next":      crd.UserAccess.NextAccess,
-	}
-	logger.WithField("basicInfo", basicInfo).
-		Debug("Fetched basic information about the connection")
+	}).Debug("Connected to SmartDoor cloud")
 
 	return nil
 }
