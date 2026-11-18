@@ -1,3 +1,6 @@
+# Base image is passed in by the Supervisor; must be declared before the first FROM
+ARG BUILD_FROM
+
 # Build the Go binaries from this fork's source (no prebuilt image needed)
 FROM golang:1.23-alpine AS build
 RUN apk add --no-cache git
@@ -11,7 +14,6 @@ RUN go build -o /out/register ./bin/register/main.go \
  && go build -o /out/haus ./bin/haus/main.go
 
 # Use Home Assistant base image
-ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Set up tempio (if needed)
