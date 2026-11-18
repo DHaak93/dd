@@ -20,6 +20,8 @@ Everything under "Unreleased" below, plus fork packaging:
 - GitHub Actions: the inherited Builder workflow (retired builder action,
   image publishing) is replaced by a Go CI workflow; the add-on lint no
   longer runs on a daily schedule.
+- New Release workflow: tags `v<version>` and publishes per-arch images to
+  ghcr.io when the version changes. This version still builds locally.
 
 ## [Unreleased]
 

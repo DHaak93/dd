@@ -22,10 +22,17 @@ For step-by-step setup and configuration guidance, please see the [Add-on Docume
 
 ## Building
 
-This fork has no prebuilt image: Home Assistant builds the add-on on your
-machine, and the Dockerfile clones `DHaak93/dd` `master` to compile the Go
-binaries. The build is only redone when the add-on version changes, so every
-change needs a version bump in `config.yaml`.
+Every change needs a version bump in `config.yaml`.
+
+When the version changes on `master`, the **Release** GitHub Actions workflow
+tags the commit `v<version>` and publishes
+`ghcr.io/dhaak93/{amd64,aarch64}-addon-dd:<version>`, built from that tag.
+
+Without `image:` in `config.yaml`, Home Assistant builds the add-on on your
+machine instead: the Dockerfile clones `DHaak93/dd` `master` (whatever it is
+at that moment) and compiles the Go binaries. With `image:` set, Home
+Assistant just pulls the published image, so wait for the Release workflow
+to finish before installing an update.
 
 [addon-store]: https://github.com/DHaak93/dd
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
