@@ -2,6 +2,8 @@
 
 This Home Assistant add-on bridges local SmartDoor garage door control systems with Home Assistant via MQTT, including support for precise position control, status monitoring, and prometheus metrics.
 
+**Compatible systems:** the add-on works with anything on the SmartDoor cloud ecosystem, including the **ATA Smart Phone Hub** and **B&D Smart Door** garage door systems, which use the same ecosystem.
+
 ---
 
 ## How to Use

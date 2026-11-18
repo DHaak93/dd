@@ -2,6 +2,8 @@
 
 This project provides a Home Assistant add-on for integrating SmartDoor smart garage door systems with Home Assistant via MQTT.
 
+**Compatible systems:** anything on the SmartDoor cloud ecosystem, including the **ATA Smart Phone Hub** and **B&D Smart Door** garage door systems, which use the same ecosystem.
+
 **Repository:** https://github.com/gravypower/dd
 
 ## Architecture Overview
