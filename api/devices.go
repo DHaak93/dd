@@ -29,13 +29,17 @@ type DoorStatusDevice struct {
 
 	Device struct {
 		Position int `json:"position"` // 0-100
+		// Rate is positive while opening, negative while closing and 0 when
+		// stopped. Nil if the cloud did not send it.
+		Rate *float64 `json:"rate"`
 	} `json:"device"`
 
 	Log struct {
-		ID    int64  `json:"logId"`
-		Alert int    `json:"alert"`
-		Text  string `json:"text"`
-		Time  int64  `json:"time"`
+		ID     int64  `json:"logId"`
+		Alert  int    `json:"alert"`  // non-zero for safety events
+		Source int    `json:"source"` // what operated the door (7 = remote control)
+		Text   string `json:"text"`
+		Time   int64  `json:"time"`
 	} `json:"log"`
 }
 

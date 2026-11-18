@@ -142,18 +142,29 @@ func main() {
 			logger.WithField("Position", device.Device.Position).Info("Announcing Position")
 			now := time.Now()
 
-			// Detect a door starting to move from its cloud activity log. This
-			// catches remotes and wall buttons, which the position (only
-			// updated at the end of travel) does not.
-			act := motion.Observe(device.ID, device.Log.ID, device.Log.Text, device.Log.Alert, device.Device.Position, now)
+			// Detect a door starting or stopping from device.rate and its cloud
+			// activity log. This catches remotes, wall buttons and safety
+			// devices, which the position (only updated at the end of travel)
+			// does not.
+			act := motion.Observe(device.ID, ddapi.Observation{
+				LogID:    device.Log.ID,
+				Text:     device.Log.Text,
+				Alert:    device.Log.Alert,
+				Position: device.Device.Position,
+				Rate:     device.Device.Rate,
+			}, now)
 			if act.IsNew {
 				fields := logrus.Fields{
 					"deviceID":  device.ID,
 					"logId":     device.Log.ID,
 					"alert":     device.Log.Alert,
+					"source":    device.Log.Source,
 					"text":      device.Log.Text,
 					"position":  device.Device.Position,
 					"direction": act.Direction,
+				}
+				if device.Device.Rate != nil {
+					fields["rate"] = *device.Device.Rate
 				}
 				if act.IsAlert {
 					logger.WithFields(fields).Warn("Door alert")
@@ -165,15 +176,6 @@ func main() {
 				}
 				if err := mqttHandler.PublishActivity(*flagMqttPrefix, device.ID, device.Log.Text); err != nil {
 					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish activity")
-				}
-			}
-			if act.Direction != "" {
-				// Publish the state directly rather than via the FSM: the FSM's
-				// opening/closing callbacks would send a command to the door.
-				if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, act.Direction); err != nil {
-					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish motion state")
-				} else {
-					logger.WithFields(logrus.Fields{"deviceID": device.ID, "state": act.Direction}).Info("Door started moving")
 				}
 			}
 
@@ -190,13 +192,24 @@ func main() {
 			} else {
 				logger.WithField("deviceID", device.ID).Info("Device already configured")
 			}
+			motion.NoteFSM(device.ID, deviceFSM.Current(), now)
+
+			if act.Direction != "" {
+				// Publish the state directly rather than via the FSM: the FSM's
+				// opening/closing callbacks would send a command to the door.
+				if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, act.Direction); err != nil {
+					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish motion state")
+				} else {
+					logger.WithFields(logrus.Fields{"deviceID": device.ID, "state": act.Direction}).Info("Door motion changed")
+				}
+			}
 
 			// Always publish position updates from the device
 			err := mqttHandler.PublishPosition(*flagMqttPrefix, device.ID, device.Device.Position)
 			if err != nil {
 				logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish position update")
 			}
-			
+
 			// Update Prometheus metrics
 			ddapi.UpdateDevicePositionMetric(device.ID, device.Device.Position)
 
@@ -213,12 +226,14 @@ func main() {
 					"Position": device.Device.Position,
 					"deviceID": device.ID,
 				}).Debug("Device at intermediate position")
-				// A door that started moving but has sat part-way for longer
-				// than a full travel time has been stopped.
-				if moving, dur := motion.Moving(device.ID, now); moving != "" && dur > ddapi.MotionGrace {
-					motion.MarkStopped(device.ID)
-					if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, "stopped"); err != nil {
-						logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish stopped state")
+				// Without device.rate, a door that started moving but has sat
+				// part-way for longer than a full travel time has been stopped.
+				if act.Direction == "" {
+					if moving, dur := motion.Moving(device.ID, now); moving != "" && dur > ddapi.MotionGrace {
+						motion.MarkStopped(device.ID, now)
+						if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, ddapi.StateStopped); err != nil {
+							logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish stopped state")
+						}
 					}
 				}
 				continue // Don't trigger FSM for intermediate positions
@@ -228,13 +243,21 @@ func main() {
 			// Skip redundant transitions to the same final state (idempotent)
 			if (currentState == "closed" && haState == "go_closed") ||
 				(currentState == "open" && haState == "go_opened") {
-				// If we announced opening/closing/stopped but the door is back
-				// at the end position the FSM already holds (movement cancelled,
-				// reversed by an obstruction or PE beam, or never started),
-				// re-announce the real state so Home Assistant doesn't stay on
-				// opening/closing.
-				if motion.NeedsResync(device.ID, currentState, now) {
+				switch {
+				case motion.NeedsResync(device.ID, currentState, now):
+					// We announced opening/closing/stopped but the door is back
+					// at the end position the FSM already holds (movement
+					// cancelled, reversed by an obstruction or PE beam, or
+					// never started): re-announce the real state so Home
+					// Assistant doesn't stay on opening/closing.
 					motion.Clear(device.ID)
+					if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, currentState); err != nil {
+						logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to re-publish state")
+					}
+				case !motion.Dirty(device.ID):
+					// Re-publish the settled state alongside the position. The
+					// state topic isn't retained, so this is what brings Home
+					// Assistant back in step after it (or the broker) restarts.
 					if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, currentState); err != nil {
 						logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to re-publish state")
 					}
@@ -246,17 +269,27 @@ func main() {
 				}).Debug("Ignoring redundant transition to the same state")
 				continue
 			}
-			motion.Clear(device.ID)
 
 			if (currentState == "opening" && haState == "go_closed") ||
 				(currentState == "closing" && haState == "go_opened") {
+				// A command from Home Assistant is (probably) still in
+				// progress. Give way to the reported position once a safety
+				// alert or stop has been seen, or the door had time to finish.
+				if !motion.FSMStale(device.ID, now) {
+					logger.WithFields(logrus.Fields{
+						"currentState": currentState,
+						"haState":      haState,
+						"deviceID":     device.ID,
+					}).Debug("Ignoring invalid state transition while opening or closing")
+					continue
+				}
 				logger.WithFields(logrus.Fields{
 					"currentState": currentState,
 					"haState":      haState,
 					"deviceID":     device.ID,
-				}).Debug("Ignoring invalid state transition while opening or closing")
-				continue
+				}).Info("Door did not complete the commanded movement; following the reported position")
 			}
+			motion.Clear(device.ID)
 
 			// Process the state transition
 			err = deviceFSM.Trigger(context.Background(), haState)
