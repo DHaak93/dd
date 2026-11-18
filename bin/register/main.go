@@ -23,8 +23,6 @@ func main() {
 		log.Fatalf("must specify -code and -password")
 	}
 
-
-
 	req := ddapi.RegisterRequest{
 		RemoteRegistrationCode: *flagShareCode,
 		UserPassword:           *flagPassword,

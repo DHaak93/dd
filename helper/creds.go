@@ -89,20 +89,20 @@ func LoadCreds(p string) (*ddapi.RegisterResponse, error) {
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 
 	var creds ddapi.RegisterResponse
-	
+
 	// Check if this is a legacy plaintext JSON file
 	if bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
 		// Attempt to parse as plaintext JSON
 		if err := json.Unmarshal(data, &creds); err != nil {
 			return nil, err
 		}
-		
+
 		// If successful, re-save it as encrypted to perform seamless migration
 		logrus.Infof("Migrating plaintext credentials file %s to encrypted format", p)
 		if err := SaveCreds(p, &creds); err != nil {
 			logrus.WithError(err).Warn("Failed to migrate credentials to encrypted format, but will proceed")
 		}
-		
+
 		return &creds, nil
 	}
 

@@ -28,7 +28,7 @@ var (
 		Name: "dd_commands_sent_total",
 		Help: "Total number of commands sent to devices via MQTT",
 	}, []string{"device_id", "command"})
-	
+
 	// APIRequestCounter tracks outgoing API requests to the SmartDoor servers/devices
 	APIRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dd_api_requests_total",
@@ -41,7 +41,7 @@ func StartMetricsServer(port int) {
 	http.Handle("/metrics", promhttp.Handler())
 	addr := ":" + strconv.Itoa(port)
 	logrus.Infof("Starting Prometheus metrics server on %s/metrics", addr)
-	
+
 	go func() {
 		if err := http.ListenAndServe(addr, nil); err != nil {
 			logrus.WithError(err).Error("Prometheus metrics server failed")

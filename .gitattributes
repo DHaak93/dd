@@ -1,0 +1,5 @@
+# Keep LF everywhere: the add-on's shell scripts run in a Linux container and
+# break with CRLF, and gofmt expects LF.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

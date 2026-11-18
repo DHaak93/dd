@@ -87,11 +87,11 @@ func TestAvailableCommands_Values(t *testing.T) {
 func TestAvailableCommandsMap_Consistency(t *testing.T) {
 	// Verify that all commands in the map match the struct values
 	mapTests := map[string]int{
-		"open":          AvailableCommands.Open,
-		"close":         AvailableCommands.Close,
-		"stop":          AvailableCommands.Stop,
-		"light_on":      AvailableCommands.LightOn,
-		"light_off":     AvailableCommands.LightOff,
+		"open":            AvailableCommands.Open,
+		"close":           AvailableCommands.Close,
+		"stop":            AvailableCommands.Stop,
+		"light_on":        AvailableCommands.LightOn,
+		"light_off":       AvailableCommands.LightOff,
 		"open_percent_50": AvailableCommands.OpenPercent50,
 	}
 
