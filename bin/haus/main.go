@@ -233,7 +233,7 @@ func main() {
 				// reversed by an obstruction or PE beam, or never started),
 				// re-announce the real state so Home Assistant doesn't stay on
 				// opening/closing.
-				if motion.NeedsResync(device.ID, now) {
+				if motion.NeedsResync(device.ID, currentState, now) {
 					motion.Clear(device.ID)
 					if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, currentState); err != nil {
 						logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to re-publish state")
