@@ -90,7 +90,7 @@ func TestAlertWhileClosingResyncs(t *testing.T) {
 		t.Fatalf("expected closing, got %+v", a)
 	}
 	// A poll while travelling must not resync.
-	if tr.NeedsResync("rear", now.Add(5*time.Second)) {
+	if tr.NeedsResync("rear", "open", now.Add(5*time.Second)) {
 		t.Fatal("should not resync while travelling")
 	}
 	// Obstruction reverses the door.
@@ -99,11 +99,11 @@ func TestAlertWhileClosingResyncs(t *testing.T) {
 		t.Fatalf("expected alert with no direction, got %+v", a)
 	}
 	// Door is back at 100 (the FSM still says open): re-announce open.
-	if !tr.NeedsResync("rear", now.Add(20*time.Second)) {
+	if !tr.NeedsResync("rear", "open", now.Add(20*time.Second)) {
 		t.Fatal("expected resync after alert")
 	}
 	tr.Clear("rear")
-	if tr.NeedsResync("rear", now.Add(21*time.Second)) {
+	if tr.NeedsResync("rear", "open", now.Add(21*time.Second)) {
 		t.Fatal("no resync after clear")
 	}
 }
@@ -116,7 +116,69 @@ func TestBeamWhileClosedIsNotOpening(t *testing.T) {
 	if a.Direction != "" || !a.IsAlert {
 		t.Fatalf("beam while closed must not be opening, got %+v", a)
 	}
-	if tr.NeedsResync("rear", now) {
+	if tr.NeedsResync("rear", "closed", now) {
 		t.Fatal("nothing was published, no resync needed")
+	}
+}
+
+func TestRealSmartDoorMessages(t *testing.T) {
+	// Messages captured from the SmartDoor cloud on 2026-11-18.
+	tr := NewMotionTracker()
+	now := time.Now()
+	tr.Observe("front", 1, "Closing by Remote control", 0, 0, now) // baseline: closed
+
+	steps := []struct {
+		text      string
+		alert     int
+		pos       int
+		direction string
+		isAlert   bool
+	}{
+		{"Opening by Remote control", 0, 0, "opening", false},
+		{"Close Prevented as beam is blocked", 1, 100, "", true},
+		{"Closing by Remote control", 0, 100, "closing", false},
+		{"Opening by Safety Beam", 0, 91, "opening", true},
+		{"Closing by Remote control", 0, 100, "closing", false},
+		{"Reversing", 1, 62, "opening", true},
+		{"Open after Obstruction", 1, 100, "", true},
+	}
+	for i, s := range steps {
+		a := tr.Observe("front", int64(i+2), s.text, s.alert, s.pos, now)
+		if a.Direction != s.direction || a.IsAlert != s.isAlert {
+			t.Errorf("%q: got direction %q alert %v, want %q %v", s.text, a.Direction, a.IsAlert, s.direction, s.isAlert)
+		}
+	}
+	// After "Open after Obstruction" the door is at 100 and the bridge had
+	// published opening: the real state must be re-announced.
+	if !tr.NeedsResync("front", "open", now) {
+		t.Error("expected resync after obstruction")
+	}
+}
+
+func TestSafetyBeamReversalResyncsOnArrival(t *testing.T) {
+	tr := NewMotionTracker()
+	now := time.Now()
+	tr.Observe("front", 1, "Opening by Remote control", 0, 100, now) // baseline: open
+	tr.Observe("front", 2, "Closing by Remote control", 0, 100, now)
+	if a := tr.Observe("front", 3, "Opening by Safety Beam", 0, 91, now.Add(4*time.Second)); a.Direction != "opening" {
+		t.Fatalf("expected opening, got %+v", a)
+	}
+	// Two seconds later the door is back at 100: announce open immediately.
+	if !tr.NeedsResync("front", "open", now.Add(6*time.Second)) {
+		t.Fatal("expected immediate resync when the door reaches open")
+	}
+}
+
+func TestOpeningNotResyncedWhileStillClosed(t *testing.T) {
+	tr := NewMotionTracker()
+	now := time.Now()
+	tr.Observe("rear", 1, "Closing by Remote control", 0, 0, now)
+	tr.Observe("rear", 2, "Opening by Remote control", 0, 0, now)
+	// Poll during travel still reports 0 (closed): keep showing opening.
+	if tr.NeedsResync("rear", "closed", now.Add(10*time.Second)) {
+		t.Fatal("must not resync to closed while opening within grace")
+	}
+	if !tr.NeedsResync("rear", "closed", now.Add(60*time.Second)) {
+		t.Fatal("expected resync after grace")
 	}
 }
