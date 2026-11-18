@@ -3,10 +3,7 @@ slug: dd
 version: "0.3.5-dh4"
 description: SmartDoor garage door integration with MQTT and position control support
 url: "https://github.com/DHaak93/dd"
-startup: application
-boot: auto
 init: false
-apparmor: true
 services:
   - mqtt:need
 
