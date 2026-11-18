@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/gravypower/dd"
@@ -18,14 +19,14 @@ func LoopMessages(ctx context.Context, conn *dd.Conn, ch chan<- ddapi.DoorStatus
 		}
 		for _, m := range messages {
 			var out ddapi.DoorStatus
-			err = m.Decode(&out)
-			if err == nil {
-				// Try to send all messages in case we got multiple.
-				ch <- out
+			if err := m.Decode(&out); err != nil {
+				// Skip a message we can't decode rather than ending the loop
+				// (which stops the bridge).
+				log.Printf("skipping undecodable message (type %d): %v", m.Type, err)
+				continue
 			}
-		}
-		if err != nil {
-			return err
+			// Try to send all messages in case we got multiple.
+			ch <- out
 		}
 
 		timer := time.NewTimer(time.Second * 2)
