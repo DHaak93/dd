@@ -4,6 +4,13 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh5] - DHaak93 fork
+
+### Changed
+- Home Assistant now pulls the prebuilt image
+  `ghcr.io/dhaak93/{arch}-addon-dd` (published by the Release workflow)
+  instead of compiling the add-on locally. No code changes.
+
 ## [0.3.5-dh4] - DHaak93 fork
 
 Everything under "Unreleased" below, plus fork packaging:
