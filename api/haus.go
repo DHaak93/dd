@@ -20,6 +20,7 @@ const (
 	PositionTopicTemplate                          = "%s/%s/position"
 	SetPositionTopicTemplate                       = "%s/%s/set_position"
 	AvailabilityTopicTemplate                      = "%s/%s/availability"
+	ActivityTopicTemplate                          = "%s/%s/activity"
 	HomeAssistantConfigTopicTemplate               = "homeassistant/cover/%s/config"
 	publishTimeout                   time.Duration = 10 * time.Second
 )
@@ -172,6 +173,13 @@ func (h *MQTTHandler) PublishAvailability(prefix, deviceID, availability string)
 func (h *MQTTHandler) PublishPosition(prefix, deviceID string, position int) error {
 	topic := fmt.Sprintf(PositionTopicTemplate, prefix, deviceID)
 	return h.publishToMQTT(topic, 0, false, fmt.Sprintf("%d", position))
+}
+
+// PublishActivity publishes the text of a device's latest cloud log entry
+// (e.g. "Opening by Daniel") so it can be used as an automation trigger.
+func (h *MQTTHandler) PublishActivity(prefix, deviceID, text string) error {
+	topic := fmt.Sprintf(ActivityTopicTemplate, prefix, deviceID)
+	return h.publishToMQTT(topic, 0, false, text)
 }
 
 // RemoveEntity removes the Home Assistant entity for the device
