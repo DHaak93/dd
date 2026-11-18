@@ -12,6 +12,8 @@ A secure and resilient integration that bridges **SmartDoor** smart garage door 
 
 - **MQTT Discovery**: Automatic entity registration under Home Assistant (Cover entity).
 - **Position Control**: Full support for opening/closing to precise percentages (5% - 95%) or standard Open/Close/Stop commands.
+- **Live Opening/Closing**: Reports `opening`/`closing` as soon as a door starts moving — including from remotes and wall buttons — instead of only after it finishes travelling.
+- **Activity & Safety Alerts**: Publishes every cloud activity log entry on `<prefix>/<id>/activity` and safety events (beam blocked, obstruction, reversing) on `<prefix>/<id>/alert` for use in automations.
 - **At-Rest Encrypted Credentials**: Auto-migrates and encrypts your login credentials locally under `/config/dd-credentials.json` via AES-256-GCM.
 - **Metrics Integration**: Built-in optional Prometheus metrics endpoint.
 - **Robust FSM & Reconnection**: Handles network dropouts gracefully and recovers without crashing.
