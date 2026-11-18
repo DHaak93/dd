@@ -4,6 +4,23 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh4] - DHaak93 fork
+
+Everything under "Unreleased" below, plus fork packaging:
+
+### Changed
+- `build.yaml` removed (deprecated); the base image now defaults in the
+  Dockerfile to the multi-arch `ghcr.io/home-assistant/base:3.22` (same
+  Alpine release as before). The unused tempio download is gone.
+- `map: config` replaced with `homeassistant_config`, still mounted at
+  `/config` so the existing credentials file is found.
+- Only `aarch64` and `amd64` are listed; Home Assistant has deprecated
+  `armhf`, `armv7` and `i386`.
+- Real maintainer in `repository.yaml`.
+- GitHub Actions: the inherited Builder workflow (retired builder action,
+  image publishing) is replaced by a Go CI workflow; the add-on lint no
+  longer runs on a daily schedule.
+
 ## [Unreleased]
 
 ### Added

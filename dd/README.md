@@ -2,9 +2,6 @@
 
 [![Supports aarch64 Architecture][aarch64-shield]][addon-store]
 [![Supports amd64 Architecture][amd64-shield]][addon-store]
-[![Supports armhf Architecture][armhf-shield]][addon-store]
-[![Supports armv7 Architecture][armv7-shield]][addon-store]
-[![Supports i386 Architecture][i386-shield]][addon-store]
 
 A secure and resilient integration that bridges **SmartDoor** smart garage door systems with Home Assistant via MQTT.
 
@@ -23,9 +20,13 @@ A secure and resilient integration that bridges **SmartDoor** smart garage door 
 
 For step-by-step setup and configuration guidance, please see the [Add-on Documentation](DOCS.md).
 
-[addon-store]: https://github.com/gravypower/dd
+## Building
+
+This fork has no prebuilt image: Home Assistant builds the add-on on your
+machine, and the Dockerfile clones `DHaak93/dd` `master` to compile the Go
+binaries. The build is only redone when the add-on version changes, so every
+change needs a version bump in `config.yaml`.
+
+[addon-store]: https://github.com/DHaak93/dd
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
-[armhf-shield]: https://img.shields.io/badge/armhf-yes-green.svg
-[armv7-shield]: https://img.shields.io/badge/armv7-yes-green.svg
-[i386-shield]: https://img.shields.io/badge/i386-yes-green.svg
