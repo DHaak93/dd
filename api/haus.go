@@ -9,8 +9,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/looplab/fsm"
 	"github.com/gravypower/dd"
+	"github.com/looplab/fsm"
 	"github.com/sirupsen/logrus"
 )
 
@@ -222,7 +222,7 @@ func ConfigureDevice(handler *MQTTHandler, conn *dd.Conn, mqttPrefix string, dev
 		"state_closed":          "closed",
 		"state_opening":         "opening",
 		"state_closing":         "closing",
-		"state_stopping":        "stopping",
+		"state_stopped":         StateStopped,
 		"payload_available":     "online",
 		"payload_not_available": "offline",
 		"position_open":         100,
@@ -230,9 +230,7 @@ func ConfigureDevice(handler *MQTTHandler, conn *dd.Conn, mqttPrefix string, dev
 		"optimistic":            false,
 		"retain":                false,
 		"device_class":          "garage",
-		"expire_after":          60,
 		"unique_id":             fmt.Sprintf("cover_%s", device.ID),
-		"scan_interval":         10,
 		"device": map[string]interface{}{
 			"identifiers":  []string{fmt.Sprintf("garage_door_%s", device.ID)},
 			"name":         basicInfo.Name,
@@ -341,7 +339,10 @@ func NewDeviceFSM(deviceID string, mqttPrefix string, conn *dd.Conn, mqttHandler
 			"enter_stopping": func(ctx context.Context, e *fsm.Event) {
 				UpdateDeviceStateMetric(deviceID, "stopping")
 				logger.WithField("deviceID", deviceID).Info("Device is Stopping")
-				err := mqttHandler.PublishStatus(mqttPrefix, deviceID, "stopping")
+				// Home Assistant's MQTT cover has no "stopping" state; it
+				// expects "stopped" (and then derives open/closed from the
+				// position).
+				err := mqttHandler.PublishStatus(mqttPrefix, deviceID, StateStopped)
 				if err != nil {
 					logger.WithError(err).WithField("deviceID", deviceID).Error("Error setting Device to stopping")
 					return
