@@ -61,7 +61,16 @@ func (t *MotionTracker) Observe(deviceID string, logID int64, text string, alert
 
 	act := Activity{IsNew: true, IsAlert: IsAlertActivity(text, alert)}
 	if act.IsAlert {
-		// The door may have stopped or reversed; we no longer know which way
+		// A safety device reversed the door (e.g. "Reversing", "Opening by
+		// Safety Beam"): it is now travelling back up.
+		if IsReversal(text) && position < PositionOpen {
+			act.Direction = "opening"
+			info.moving = "opening"
+			info.since = now
+			info.dirty = true
+			return act
+		}
+		// Otherwise the door may have stopped; we no longer know which way
 		// it is going. Leave dirty set so the real state is re-announced at
 		// the next end position.
 		info.moving = ""
@@ -96,6 +105,14 @@ func IsAlertActivity(text string, alert int) bool {
 		}
 	}
 	return false
+}
+
+// IsReversal reports whether an alert entry means the door has reversed and
+// is now opening, as opposed to having finished ("Open after Obstruction") or
+// having refused to move ("Close Prevented as beam is blocked").
+func IsReversal(text string) bool {
+	t := strings.ToLower(text)
+	return strings.Contains(t, "revers") || strings.Contains(t, "opening")
 }
 
 // ClassifyActivity works out whether a log entry means the door started
@@ -157,15 +174,20 @@ func (t *MotionTracker) MarkStopped(deviceID string) {
 
 // NeedsResync reports whether the door is at an end position that the FSM
 // already considers current, but the bridge has since published a different
-// state (opening/closing/stopped) that must be corrected. A door still within
-// MotionGrace of starting to move is not resynced, because the position
-// isn't updated until it finishes travelling.
-func (t *MotionTracker) NeedsResync(deviceID string, now time.Time) bool {
+// state (opening/closing/stopped) that must be corrected. endState is the
+// state the reported position corresponds to ("open" or "closed"). A door that
+// has reached the end it was heading for is resynced straight away; one still
+// at its starting end is only resynced after MotionGrace, because the
+// position isn't always updated until it finishes travelling.
+func (t *MotionTracker) NeedsResync(deviceID string, endState string, now time.Time) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	info, ok := t.devices[deviceID]
 	if !ok || !info.dirty {
 		return false
+	}
+	if (info.moving == "opening" && endState == "open") || (info.moving == "closing" && endState == "closed") {
+		return true
 	}
 	if info.moving != "" && now.Sub(info.since) <= MotionGrace {
 		return false
