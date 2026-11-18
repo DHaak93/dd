@@ -6,6 +6,9 @@ FROM golang:1.23-alpine AS build
 RUN apk add --no-cache git
 ARG DD_REPO=https://github.com/DHaak93/dd.git
 ARG DD_REF=master
+# Changing the add-on version invalidates the cached clone below
+ARG BUILD_VERSION
+RUN echo "Building dd ${BUILD_VERSION}"
 RUN git clone --depth 1 --branch "${DD_REF}" "${DD_REPO}" /src
 WORKDIR /src
 ENV CGO_ENABLED=0
