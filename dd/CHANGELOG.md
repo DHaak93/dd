@@ -4,6 +4,29 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Live `opening`/`closing` state as soon as a door starts moving, including
+  from remotes and wall buttons (from `device.rate`, falling back to the
+  cloud activity log).
+- `<prefix>/<id>/activity` topic with the text of each new cloud activity
+  log entry.
+- `<prefix>/<id>/alert` topic for safety events (beam blocked, obstruction,
+  reversing); a reversal shows the door as `opening`.
+
+### Fixed
+- `STOP` from Home Assistant left the cover on `stopping`, which Home
+  Assistant doesn't support; it now reports `stopped`.
+- A command from Home Assistant that the door didn't complete (e.g. close
+  prevented by the beam) left the cover on `opening`/`closing` until the door
+  next moved.
+- State is re-published with every status update, so Home Assistant no longer
+  shows an unknown state after it restarts.
+- One undecodable cloud message no longer stops the bridge.
+- Debug logs no longer contain passwords or the session secret.
+- Removed `expire_after` and `scan_interval` from the discovery config.
+
 ## [0.3.3] - 2025-12-02
 
 ### Fixed
