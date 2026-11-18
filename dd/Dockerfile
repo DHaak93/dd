@@ -1,3 +1,15 @@
+# Build the Go binaries from this fork's source (no prebuilt image needed)
+FROM golang:1.23-alpine AS build
+RUN apk add --no-cache git
+ARG DD_REPO=https://github.com/DHaak93/dd.git
+ARG DD_REF=master
+RUN git clone --depth 1 --branch "${DD_REF}" "${DD_REPO}" /src
+WORKDIR /src
+ENV CGO_ENABLED=0
+RUN go build -o /out/register ./bin/register/main.go \
+ && go build -o /out/action ./bin/action/main.go \
+ && go build -o /out/haus ./bin/haus/main.go
+
 # Use Home Assistant base image
 ARG BUILD_FROM
 FROM $BUILD_FROM
@@ -10,6 +22,7 @@ RUN curl -sSLf -o /usr/bin/tempio \
 
 # Copy root filesystem
 COPY rootfs /
+COPY --from=build /out/ /usr/bin/dd/
 
 # Ensure scripts in services.d and cont-init.d are executable
 RUN chmod +x /etc/cont-init.d/* /etc/services.d/dd/run /etc/services.d/dd/finish
