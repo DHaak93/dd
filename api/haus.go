@@ -21,6 +21,7 @@ const (
 	SetPositionTopicTemplate                       = "%s/%s/set_position"
 	AvailabilityTopicTemplate                      = "%s/%s/availability"
 	ActivityTopicTemplate                          = "%s/%s/activity"
+	AlertTopicTemplate                             = "%s/%s/alert"
 	HomeAssistantConfigTopicTemplate               = "homeassistant/cover/%s/config"
 	publishTimeout                   time.Duration = 10 * time.Second
 )
@@ -179,6 +180,13 @@ func (h *MQTTHandler) PublishPosition(prefix, deviceID string, position int) err
 // (e.g. "Opening by Daniel") so it can be used as an automation trigger.
 func (h *MQTTHandler) PublishActivity(prefix, deviceID, text string) error {
 	topic := fmt.Sprintf(ActivityTopicTemplate, prefix, deviceID)
+	return h.publishToMQTT(topic, 0, false, text)
+}
+
+// PublishAlert publishes the text of a safety/fault log entry (PE beam,
+// obstruction, ...) so it can be used as an automation trigger.
+func (h *MQTTHandler) PublishAlert(prefix, deviceID, text string) error {
+	topic := fmt.Sprintf(AlertTopicTemplate, prefix, deviceID)
 	return h.publishToMQTT(topic, 0, false, text)
 }
 
