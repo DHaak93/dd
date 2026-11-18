@@ -3,7 +3,7 @@
 [![Supports aarch64 Architecture][aarch64-shield]][addon-store]
 [![Supports amd64 Architecture][amd64-shield]][addon-store]
 
-A secure and resilient integration that bridges **SmartDoor** smart garage door systems with Home Assistant via MQTT.
+A secure and resilient integration that bridges **SmartDoor** smart garage door systems with Home Assistant via MQTT. Works with the **ATA Smart Phone Hub** and **B&D Smart Door** systems too, which use the same SmartDoor ecosystem.
 
 ## Features
 
