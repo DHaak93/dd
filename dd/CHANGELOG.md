@@ -4,6 +4,21 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh7] - DHaak93 fork
+
+### Added
+- Home Assistant buttons for the door's partial-open presets, named as set
+  up in the SmartDoor/ATA app (e.g. **Pet**, **Parcel**, **Ventilation**).
+  They appear on the same device as the cover. The door goes to the height
+  saved for each preset in the app. They can also be sent as
+  `part_open_1`, `part_open_2` or `part_open_3` on the command topic.
+
+### Changed
+- Some doors (e.g. the GDO6V4) reject the 5–95 % position commands used by
+  the position slider ("Action rejected: Not Supported"). The log now says
+  to use the partial-open buttons instead. Fully open/closed from the
+  slider still works.
+
 ## [0.3.5-dh6] - DHaak93 fork
 
 Fixes from testing 0.3.5-dh5 on a real door.

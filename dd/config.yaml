@@ -1,6 +1,6 @@
 name: SmartDoor MQTT Bridge (DHaak93)
 slug: dd
-version: "0.3.5-dh6"
+version: "0.3.5-dh7"
 # Prebuilt by the Release workflow; wait for it to finish before updating.
 image: "ghcr.io/dhaak93/{arch}-addon-dd"
 description: SmartDoor garage door integration with MQTT and position control support

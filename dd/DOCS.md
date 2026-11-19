@@ -58,8 +58,9 @@ If you are using custom MQTT scripts or automations, the following topics are ex
 | `dd-door/<id>/availability` | out (retained) | `online` / `offline` |
 | `dd-door/<id>/activity` | out | Text of every new entry in the door's cloud activity log, e.g. `Opening by Remote control`, `Daniel sent Close` |
 | `dd-door/<id>/alert` | out | Text of safety/fault log entries only, e.g. `Close Prevented as beam is blocked`, `Reversing`, `Open after Obstruction` |
-| `dd-door/<id>/command` | in | `go_open`, `go_close` or `STOP` |
-| `dd-door/<id>/set_position` | in | Target position `0`-`100` |
+| `dd-door/<id>/command` | in | `go_open`, `go_close`, `STOP`, or `part_open_1`/`part_open_2`/`part_open_3` (the door's partial-open presets) |
+| `dd-door/<id>/set_position` | in | Target position `0`-`100`. Not every door accepts in-between positions; see below |
+| `homeassistant/button/<id>_part_open_N/config` | out (retained) | Discovery config for the partial-open buttons |
 
 ### Opening / closing detection
 
@@ -86,3 +87,9 @@ automation:
         data:
           message: "Garage door: {{ trigger.payload }}"
 ```
+
+### Partial open (Pet, Parcel, Ventilation)
+
+Each door gets up to three buttons in Home Assistant, on the same device as the cover, for the partial-open presets set up in the SmartDoor/ATA app (Settings → Partial open control 1–3). They are named as in the app, e.g. **Pet**. Pressing one sends the door to the height saved for that preset; Home Assistant shows it opening, then open at the position it stopped.
+
+Some doors (e.g. the GDO6V4) reject the position slider's in-between positions with "Action rejected: Not Supported". On those doors use the partial-open buttons; the slider still works for fully open (100) and closed (0).

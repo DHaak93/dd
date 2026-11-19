@@ -261,6 +261,8 @@ func ConfigureDevice(handler *MQTTHandler, conn *dd.Conn, mqttPrefix string, dev
 		}()
 	}
 
+	publishPartOpenButtons(handler, mqttPrefix, device, basicInfo)
+
 	deviceFSM := NewDeviceFSM(device.ID, mqttPrefix, conn, handler)
 	SetDeviceFSM(device.ID, deviceFSM)
 	return deviceFSM
