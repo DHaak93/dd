@@ -4,6 +4,20 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh6] - DHaak93 fork
+
+Fixes from testing 0.3.5-dh5 on a real door.
+
+### Fixed
+- A door stopped part-way could show as **closed** in Home Assistant (seen:
+  "Closed" at 48%). On a `stopped` state, HA's MQTT cover picks open or
+  closed from the last position it received, which was still 0. A door
+  halted part-way is now published as `open`, and the position is published
+  before the state.
+- A move started from the SmartDoor app reports `rate` 0 while the door
+  travels. A new "… sent Open/Close" log entry now wins over rate 0, so the
+  move is not mistaken for a stop.
+
 ## [0.3.5-dh5] - DHaak93 fork
 
 ### Changed
