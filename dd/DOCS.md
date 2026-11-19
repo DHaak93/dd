@@ -53,7 +53,7 @@ If you are using custom MQTT scripts or automations, the following topics are ex
 | Topic | Direction | Payload |
 | :--- | :--- | :--- |
 | `homeassistant/cover/<id>/config` | out (retained) | Discovery config for the cover entity |
-| `dd-door/<id>/state` | out | `open`, `closed`, `opening`, `closing` or `stopped` |
+| `dd-door/<id>/state` | out | `open`, `closed`, `opening` or `closing` (a door stopped part-way is `open`) |
 | `dd-door/<id>/position` | out | Current position `0`-`100` |
 | `dd-door/<id>/availability` | out (retained) | `online` / `offline` |
 | `dd-door/<id>/activity` | out | Text of every new entry in the door's cloud activity log, e.g. `Opening by Remote control`, `Daniel sent Close` |
@@ -65,11 +65,11 @@ If you are using custom MQTT scripts or automations, the following topics are ex
 
 The SmartDoor cloud only updates a door's position once it has finished travelling, so on its own Home Assistant would not see a door move until it stopped. The bridge therefore also watches:
 
-1. **`device.rate`** (when the cloud sends it): positive while opening, negative while closing, `0` when stopped. `opening`/`closing` is published as soon as the door moves, and `stopped` as soon as it halts part-way.
+1. **`device.rate`** (when the cloud sends it): positive while opening, negative while closing, `0` when stopped. `opening`/`closing` is published as soon as the door moves, and `open` (with the position it stopped at) as soon as it halts part-way. The app reports `0` while a move it started is travelling, so a new log entry about opening/closing takes priority over a `0` rate.
 2. **The door's activity log**: a new entry such as `Opening by Remote control` or `Daniel sent Close` publishes `opening`/`closing` straight away. This also covers remotes and wall buttons, not just commands from Home Assistant.
 3. **Safety events**: an entry with the cloud's alert flag set, or that mentions the beam/obstruction/reversing, is published on the `alert` topic. If a safety device reverses the door (`Reversing`, `Opening by Safety Beam`), the state changes to `opening`.
 
-Once the door reaches an end position the real `open`/`closed` state is published again. If no end position is reached within 45 seconds the door is reported as `stopped`. The current state is also re-published with every status update, so Home Assistant catches up after a restart.
+Once the door reaches an end position the real `open`/`closed` state is published again. If no end position is reached within 45 seconds the door is reported as stopped part-way, i.e. `open` at its position. Home Assistant's MQTT cover has no stopped state of its own: on `stopped` it guesses open or closed from the last position it had, which can be wrong, so the bridge sends `open` instead. The current state is also re-published with every status update, so Home Assistant catches up after a restart.
 
 The activity log does not say which remote was used.
 

@@ -18,6 +18,18 @@ const (
 	StateStopped = "stopped"
 )
 
+// PublishedState maps a direction from the tracker to the payload sent on the
+// state topic. A door halted part-way is published as "open": Home
+// Assistant's MQTT cover has no stopped state of its own, and on "stopped" it
+// picks open or closed from the last position it received, which may still be
+// the old end position (seen on a real door: "closed" at 48%).
+func PublishedState(dir string) string {
+	if dir == StateStopped {
+		return "open"
+	}
+	return dir
+}
+
 // MotionTracker works out when a door starts or stops moving between end
 // positions. The reported position is only updated at the end of travel, so
 // without this Home Assistant would not see a door move until it had stopped.
@@ -148,7 +160,14 @@ func (t *MotionTracker) Observe(deviceID string, o Observation, now time.Time) A
 			act.Direction = info.start(dir, true, now)
 			return act
 		}
-		if *o.Rate == 0 && isIntermediate(o.Position) && (info.byRate || !seen) {
+		// Moves started from the app report rate 0 while travelling, so a new
+		// log entry saying the door is opening/closing wins over rate 0.
+		startsMove := false
+		if act.IsNew && !act.IsAlert {
+			d := ClassifyActivity(o.Text, o.Position)
+			startsMove = d == StateOpening || d == StateClosing
+		}
+		if *o.Rate == 0 && isIntermediate(o.Position) && (info.byRate || !seen) && !startsMove {
 			// It was moving (or the bridge has just started) and has now
 			// halted part-way.
 			info.stop(now)

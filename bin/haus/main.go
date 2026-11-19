@@ -194,20 +194,23 @@ func main() {
 			}
 			motion.NoteFSM(device.ID, deviceFSM.Current(), now)
 
-			if act.Direction != "" {
-				// Publish the state directly rather than via the FSM: the FSM's
-				// opening/closing callbacks would send a command to the door.
-				if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, act.Direction); err != nil {
-					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish motion state")
-				} else {
-					logger.WithFields(logrus.Fields{"deviceID": device.ID, "state": act.Direction}).Info("Door motion changed")
-				}
-			}
-
-			// Always publish position updates from the device
+			// Always publish position updates from the device, before any
+			// state, so Home Assistant has the new position when the state
+			// arrives.
 			err := mqttHandler.PublishPosition(*flagMqttPrefix, device.ID, device.Device.Position)
 			if err != nil {
 				logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish position update")
+			}
+
+			if act.Direction != "" {
+				// Publish the state directly rather than via the FSM: the FSM's
+				// opening/closing callbacks would send a command to the door.
+				state := ddapi.PublishedState(act.Direction)
+				if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, state); err != nil {
+					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish motion state")
+				} else {
+					logger.WithFields(logrus.Fields{"deviceID": device.ID, "state": act.Direction, "published": state}).Info("Door motion changed")
+				}
 			}
 
 			// Update Prometheus metrics
@@ -231,7 +234,7 @@ func main() {
 				if act.Direction == "" {
 					if moving, dur := motion.Moving(device.ID, now); moving != "" && dur > ddapi.MotionGrace {
 						motion.MarkStopped(device.ID, now)
-						if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, ddapi.StateStopped); err != nil {
+						if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, ddapi.PublishedState(ddapi.StateStopped)); err != nil {
 							logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish stopped state")
 						}
 					}

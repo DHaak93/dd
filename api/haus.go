@@ -339,10 +339,10 @@ func NewDeviceFSM(deviceID string, mqttPrefix string, conn *dd.Conn, mqttHandler
 			"enter_stopping": func(ctx context.Context, e *fsm.Event) {
 				UpdateDeviceStateMetric(deviceID, "stopping")
 				logger.WithField("deviceID", deviceID).Info("Device is Stopping")
-				// Home Assistant's MQTT cover has no "stopping" state; it
-				// expects "stopped" (and then derives open/closed from the
-				// position).
-				err := mqttHandler.PublishStatus(mqttPrefix, deviceID, StateStopped)
+				// Home Assistant's MQTT cover has no "stopping" state. A door
+				// stopped mid-travel is part-way open, so publish "open"; the
+				// next status update corrects it if the door was at an end.
+				err := mqttHandler.PublishStatus(mqttPrefix, deviceID, PublishedState(StateStopped))
 				if err != nil {
 					logger.WithError(err).WithField("deviceID", deviceID).Error("Error setting Device to stopping")
 					return
