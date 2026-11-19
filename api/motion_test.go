@@ -316,6 +316,48 @@ func TestFSMStale(t *testing.T) {
 	}
 }
 
+// Sequences recorded on a real door (front door, 2026-11-19 field test).
+func TestFieldTestStopPartWay(t *testing.T) {
+	tr := NewMotionTracker()
+	now := time.Now()
+	tr.Observe("front", Observation{LogID: 1, Text: "Closed", Position: 0, Rate: rate(0)}, now)
+	if a := tr.Observe("front", Observation{LogID: 2, Text: "Opening by Remote control", Position: 0, Rate: rate(5.263)}, now); a.Direction != "opening" {
+		t.Fatalf("opening: got %+v", a)
+	}
+	a := tr.Observe("front", Observation{LogID: 3, Text: "Stopped by Remote control", Position: 48, Rate: rate(0)}, now.Add(11*time.Second))
+	if a.Direction != StateStopped {
+		t.Fatalf("stopped: got %+v", a)
+	}
+	// HA must be told "open", not "stopped": on "stopped" it showed Closed at 48%.
+	if got := PublishedState(a.Direction); got != "open" {
+		t.Fatalf("published %q, want open", got)
+	}
+}
+
+func TestAppMoveWithZeroRate(t *testing.T) {
+	// App commands report rate 0 while the door travels.
+	tr := NewMotionTracker()
+	now := time.Now()
+	tr.Observe("front", Observation{LogID: 1, Text: "Stopped by Home Assistant", Position: 42, Rate: rate(0)}, now)
+	if a := tr.Observe("front", Observation{LogID: 2, Text: "Daniel sent Close", Position: 42, Rate: rate(0)}, now); a.Direction != "closing" {
+		t.Fatalf("app close from part-way: got %+v", a)
+	}
+
+	// Even right after a rate-confirmed movement, the new entry wins over rate 0.
+	tr.Observe("front", Observation{LogID: 3, Text: "Opening by Remote control", Position: 42, Rate: rate(5)}, now)
+	if a := tr.Observe("front", Observation{LogID: 4, Text: "Daniel sent Close", Position: 70, Rate: rate(0)}, now); a.Direction != "closing" {
+		t.Fatalf("app close after remote open: got %+v", a)
+	}
+}
+
+func TestPublishedState(t *testing.T) {
+	for in, want := range map[string]string{"stopped": "open", "opening": "opening", "closing": "closing", "open": "open", "closed": "closed"} {
+		if got := PublishedState(in); got != want {
+			t.Errorf("PublishedState(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestDecodeRealDeviceJSON(t *testing.T) {
 	raw := `{"deviceId":"abc","name":"Front","device":{"position":62,"rate":4.5},
 		"log":{"text":"Reversing","time":1763452800,"source":7,"logId":1234,"alert":1}}`
