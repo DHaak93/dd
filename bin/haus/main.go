@@ -26,6 +26,20 @@ const (
 	OPEN = 100
 )
 
+// motion tracks door movement across status updates and commands.
+var motion = ddapi.NewMotionTracker()
+
+// refreshAfterCommand schedules a status fetch after a movement command; set
+// in main once the SmartDoor connection exists.
+var refreshAfterCommand = func() {}
+
+// noteCommand records a movement command so that a refusal can be detected.
+func noteCommand(deviceID, dir, label string) {
+	if motion.CommandSent(deviceID, dir, label, time.Now()) {
+		refreshAfterCommand()
+	}
+}
+
 // Reconnect backoff bounds for a lost SmartDoor session.
 const (
 	reconnectMinDelay = 5 * time.Second
@@ -145,7 +159,24 @@ func main() {
 	statusCh := make(chan ddapi.DoorStatus)
 	go handleStatusUpdates(ctx, &ddConn, credentials.Credential, statusCh)
 
-	motion := ddapi.NewMotionTracker()
+	// After a movement command, fetch a fresh status once RefusedAfter has
+	// passed, so a command the door refused (e.g. beam blocked) is noticed even
+	// though the hub sends nothing further.
+	refreshAfterCommand = func() {
+		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(ddapi.RefusedAfter + time.Second):
+			}
+			status, err := ddapi.SafeFetchStatus(&ddConn)
+			if err != nil {
+				logger.WithError(err).Warn("Failed to fetch status after command")
+				return
+			}
+			sendStatus(ctx, statusCh, status)
+		}()
+	}
 
 	for status := range statusCh {
 		for _, device := range status.Devices {
@@ -186,6 +217,24 @@ func main() {
 				}
 				if err := mqttHandler.PublishActivity(*flagMqttPrefix, device.ID, device.Log.Text); err != nil {
 					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish activity")
+				}
+			}
+
+			// A movement command from Home Assistant that the door never acted
+			// on, and for which the hub logged no alert (it only pushes "Close
+			// Prevented as beam is blocked" to the app when the door was
+			// part-way): raise our own alert and stop showing it as moving.
+			if label, refused := motion.Refused(device.ID, now); refused {
+				text := fmt.Sprintf("%s didn't start: door did not move (beam blocked or obstruction?)", label)
+				logger.WithFields(logrus.Fields{"deviceID": device.ID, "position": device.Device.Position, "command": label}).Warn("Door refused command")
+				if err := mqttHandler.PublishAlert(*flagMqttPrefix, device.ID, text); err != nil {
+					logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish alert")
+				}
+				if device.Device.Position != OPEN && device.Device.Position != CLOSE {
+					// Part-way: there is no FSM end state to fall back to.
+					if err := mqttHandler.PublishStatus(*flagMqttPrefix, device.ID, ddapi.PublishedState(ddapi.StateStopped)); err != nil {
+						logger.WithError(err).WithField("deviceID", device.ID).Error("Failed to publish state")
+					}
 				}
 			}
 
@@ -447,11 +496,13 @@ func handleCommand(topic string, command string) {
 			logger.WithError(err).Error("Failed to process 'go_offline' event")
 		}
 	case "GO_OPEN":
+		noteCommand(deviceID, ddapi.StateOpening, "Open")
 		err := deviceFSM.Trigger(context.Background(), "go_open")
 		if err != nil {
 			logger.WithError(err).Error("Failed to process 'open' event")
 		}
 	case "GO_CLOSE":
+		noteCommand(deviceID, ddapi.StateClosing, "Close")
 		err := deviceFSM.Trigger(context.Background(), "go_close")
 		if err != nil {
 			logger.WithError(err).Error("Failed to process 'close' event")
@@ -465,6 +516,13 @@ func handleCommand(topic string, command string) {
 		// Partial-open presets (Pet, Parcel, ...). Sent straight to the
 		// door; the motion tracker reports the movement from its log entry.
 		if cmd, ok := ddapi.PartOpenCommand(command); ok {
+			// A preset may move the door either way; treat it as a close only
+			// when the door starts fully open.
+			dir := ddapi.StateOpening
+			if pos, ok := motion.Position(deviceID); ok && pos >= ddapi.PositionOpen {
+				dir = ddapi.StateClosing
+			}
+			noteCommand(deviceID, dir, "Partial open")
 			ddapi.RecordCommand(deviceID, fmt.Sprintf("%d", cmd))
 			if err := ddapi.SafeCommand(deviceFSM.Conn, deviceID, cmd); err != nil {
 				logger.WithError(err).WithFields(logrus.Fields{"deviceID": deviceID, "command": command}).Error("Failed to send partial open command")

@@ -63,6 +63,15 @@ type motionInfo struct {
 	// after a command from Home Assistant.
 	fsmBusy  string
 	fsmSince time.Time
+
+	// lastPos is the position from the latest observation (-1 until seen).
+	lastPos int
+	// cmd* track a movement command sent from Home Assistant until the door
+	// is seen to move, raises an alert, or is found to have refused it.
+	cmdDir   string // "", StateOpening or StateClosing
+	cmdLabel string // what was sent, for the alert text ("Close", "Pet", ...)
+	cmdAt    time.Time
+	cmdPos   int
 }
 
 // Observation is one status report for a door.
@@ -89,7 +98,7 @@ func NewMotionTracker() *MotionTracker {
 func (t *MotionTracker) info(deviceID string) (*motionInfo, bool) {
 	info, ok := t.devices[deviceID]
 	if !ok {
-		info = &motionInfo{}
+		info = &motionInfo{lastPos: -1}
 		t.devices[deviceID] = info
 	}
 	return info, ok
@@ -142,6 +151,7 @@ func (t *MotionTracker) Observe(deviceID string, o Observation, now time.Time) A
 	defer t.mu.Unlock()
 
 	info, seen := t.info(deviceID)
+	info.lastPos = o.Position
 	var act Activity
 	if !seen {
 		info.logID = o.LogID
@@ -152,6 +162,14 @@ func (t *MotionTracker) Observe(deviceID string, o Observation, now time.Time) A
 		if act.IsAlert {
 			info.interrupted = now
 		}
+	}
+
+	// A pending command is settled once the door shows it moved (a rate, or a
+	// new position) or the hub reported a safety alert. A new log entry on its
+	// own proves nothing: the hub logs "Home Assistant sent Close" with rate 0
+	// even when the beam stops the door from moving.
+	if info.cmdDir != "" && (act.IsAlert || o.Position != info.cmdPos || (o.Rate != nil && *o.Rate != 0)) {
+		info.cmdDir = ""
 	}
 
 	// 1. device.rate, when present, is the most direct signal.
@@ -298,6 +316,17 @@ func ClassifyActivity(text string, position int) string {
 	return ""
 }
 
+// Position returns the position from the latest observation of a device.
+func (t *MotionTracker) Position(deviceID string) (int, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	info, ok := t.devices[deviceID]
+	if !ok || info.lastPos < 0 {
+		return 0, false
+	}
+	return info.lastPos, true
+}
+
 // Moving returns the direction a device is believed to be moving in and for
 // how long, or "" if it is not moving.
 func (t *MotionTracker) Moving(deviceID string, now time.Time) (string, time.Duration) {
@@ -384,6 +413,52 @@ func (t *MotionTracker) FSMStale(deviceID string, now time.Time) bool {
 		return true
 	}
 	return now.Sub(info.fsmSince) > MotionGrace
+}
+
+// RefusedAfter is how long after a command from Home Assistant the door must
+// show some sign of moving before the command is treated as refused (e.g. a
+// close prevented by the safety beam). Real moves show a rate or a new
+// position within a few seconds.
+const RefusedAfter = 12 * time.Second
+
+// CommandSent records that Home Assistant asked the door to move in dir
+// (StateOpening or StateClosing); label names the command for the alert text.
+// It returns false, and records nothing, when the door is already at the end
+// it was asked to go to or hasn't been seen yet.
+func (t *MotionTracker) CommandSent(deviceID, dir, label string, now time.Time) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	info, _ := t.info(deviceID)
+	if info.lastPos < 0 ||
+		(dir == StateClosing && info.lastPos <= PositionClosed) ||
+		(dir == StateOpening && info.lastPos >= PositionOpen) {
+		return false
+	}
+	info.cmdDir = dir
+	info.cmdLabel = label
+	info.cmdAt = now
+	info.cmdPos = info.lastPos
+	return true
+}
+
+// Refused reports whether a command recorded by CommandSent has gone
+// RefusedAfter without the door moving or raising an alert. If so, it returns
+// the command's label, forgets the command and marks the door as interrupted
+// and no longer moving, so the reported position wins again.
+func (t *MotionTracker) Refused(deviceID string, now time.Time) (string, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	info, ok := t.devices[deviceID]
+	if !ok || info.cmdDir == "" || now.Sub(info.cmdAt) < RefusedAfter {
+		return "", false
+	}
+	label := info.cmdLabel
+	info.cmdDir = ""
+	info.moving = ""
+	info.byRate = false
+	info.dirty = true
+	info.interrupted = now
+	return label, true
 }
 
 // Clear marks a device as settled: not moving and in step with the FSM.
