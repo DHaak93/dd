@@ -349,7 +349,9 @@ func NewDeviceFSM(deviceID string, mqttPrefix string, conn *dd.Conn, mqttHandler
 					logger.WithError(err).WithField("deviceID", deviceID).Error("Error sending open command")
 					return
 				}
-				logger.WithField("deviceID", deviceID).Info("Device is Opening")
+				// Logged once the hub has accepted the command, which can be after
+				// the door has already reported back (e.g. a refusal).
+				logger.WithField("deviceID", deviceID).Info("Open command accepted by hub")
 			},
 			"enter_closing": func(ctx context.Context, e *fsm.Event) {
 				UpdateDeviceStateMetric(deviceID, "closing")
@@ -364,7 +366,10 @@ func NewDeviceFSM(deviceID string, mqttPrefix string, conn *dd.Conn, mqttHandler
 					logger.WithError(err).WithField("deviceID", deviceID).Error("Error sending close command")
 					return
 				}
-				logger.WithField("deviceID", deviceID).Info("Device is Closing")
+				// Logged once the hub has accepted the command, which can be after
+				// the door has already reported back (e.g. "Close Prevented as
+				// beam is blocked"); it doesn't mean the door is moving.
+				logger.WithField("deviceID", deviceID).Info("Close command accepted by hub")
 			},
 			"enter_stopping": func(ctx context.Context, e *fsm.Event) {
 				UpdateDeviceStateMetric(deviceID, "stopping")

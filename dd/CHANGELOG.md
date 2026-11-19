@@ -4,6 +4,23 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh10] - DHaak93 fork
+
+From testing 0.3.5-dh9 on the front door.
+
+### Fixed
+- A close (or open, or partial open) from Home Assistant that the door
+  refuses, e.g. because the safety beam is blocked, no longer shows as
+  `closing` for a minute or more. The bridge re-checks the door 12 s after
+  the command; if it hasn't moved, it publishes an alert ("Close didn't
+  start: door did not move (beam blocked or obstruction?)") and shows the
+  door where it is. This matters when the door is part-way open: the hub
+  then only sends "Close Prevented as beam is blocked" to the app, not to
+  its activity log. From fully open the hub's own alert is used, as before.
+- The log no longer says "Device is Closing"/"Device is Opening" when the
+  hub accepts a command, which could appear after the door had already
+  refused it. It now says the command was accepted.
+
 ## [0.3.5-dh9] - DHaak93 fork
 
 Reliability fixes ported from upstream 0.3.6 (gravypower/dd).
