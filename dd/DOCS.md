@@ -59,7 +59,7 @@ If you are using custom MQTT scripts or automations, the following topics are ex
 | `dd-door/<id>/activity` | out | Text of every new entry in the door's cloud activity log, e.g. `Opening by Remote control`, `Daniel sent Close` |
 | `dd-door/<id>/alert` | out | Text of safety/fault log entries only, e.g. `Close Prevented as beam is blocked`, `Reversing`, `Open after Obstruction` |
 | `dd-door/<id>/command` | in | `go_open`, `go_close`, `STOP`, or `part_open_1`/`part_open_2`/`part_open_3` (the door's partial-open presets) |
-| `dd-door/<id>/set_position` | in | Target position `0`-`100`. Not every door accepts in-between positions; see below |
+| `dd-door/<id>/set_position` | in | Target position `0`-`100`, for scripts only (no slider in Home Assistant). Not every door accepts in-between positions; see below |
 | `homeassistant/button/<id>_part_open_N/config` | out (retained) | Discovery config for the partial-open buttons |
 
 ### Opening / closing detection
@@ -90,6 +90,33 @@ automation:
 
 ### Partial open (Pet, Parcel, Ventilation)
 
-Each door gets up to three buttons in Home Assistant, on the same device as the cover, for the partial-open presets set up in the SmartDoor/ATA app (Settings → Partial open control 1–3). They are named as in the app, e.g. **Pet**. Pressing one sends the door to the height saved for that preset; Home Assistant shows it opening, then open at the position it stopped.
+Each door gets up to three buttons in Home Assistant, on the same device as the cover, for the partial-open presets set up in the SmartDoor/ATA app (Settings → Partial open control 1–3). They are named as in the app when the door reports the names; otherwise they are **Partial open 1–3**, in the app's order (by default Pet, Parcel, Ventilation). You can rename them in Home Assistant. Pressing one sends the door to the height saved for that preset; Home Assistant shows it opening, then open at the position it stopped.
 
-Some doors (e.g. the GDO6V4) reject the position slider's in-between positions with "Action rejected: Not Supported". On those doors use the partial-open buttons; the slider still works for fully open (100) and closed (0).
+The doors (e.g. the GDO6V4) reject in-between positions with "Action rejected: Not Supported", so the cover shows its position but has no position slider. Use the partial-open buttons instead. To put them on the door's card, use a card like this:
+
+```yaml
+type: vertical-stack
+cards:
+  - type: tile
+    entity: cover.garage_front_roller_door
+    features:
+      - type: cover-open-close
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: button
+        entity: button.garage_front_roller_door_partial_open_1
+        name: Pet
+        tap_action: {action: perform-action, perform_action: button.press, target: {entity_id: button.garage_front_roller_door_partial_open_1}}
+      - type: button
+        entity: button.garage_front_roller_door_partial_open_2
+        name: Parcel
+        tap_action: {action: perform-action, perform_action: button.press, target: {entity_id: button.garage_front_roller_door_partial_open_2}}
+      - type: button
+        entity: button.garage_front_roller_door_partial_open_3
+        name: Ventilation
+        tap_action: {action: perform-action, perform_action: button.press, target: {entity_id: button.garage_front_roller_door_partial_open_3}}
+```
+
+Replace the entity IDs with your own (Settings → Devices → the door).
