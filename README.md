@@ -4,7 +4,15 @@ This project provides a Home Assistant add-on for integrating SmartDoor smart ga
 
 **Compatible systems:** anything on the SmartDoor cloud ecosystem, including the **ATA Smart Phone Hub** and **B&D Smart Door** garage door systems, which use the same ecosystem.
 
-**Repository:** https://github.com/gravypower/dd
+**Repository:** https://github.com/DHaak93/dd. This is a fork of [gravypower/dd](https://github.com/gravypower/dd), the original project by gravypower. The fork adds live opening/closing detection, activity and safety-alert topics, and prebuilt add-on images.
+
+## Install in Home Assistant
+
+1. Settings → Add-ons → Add-on Store → ⋮ → **Repositories**.
+2. Add `https://github.com/DHaak93/dd`.
+3. Install **SmartDoor MQTT Bridge (DHaak93)** and follow its Documentation tab.
+
+The Go module path is still `github.com/gravypower/dd` (see the package names below), so the code stays compatible with the original project. Only the repository you install from is different.
 
 ## Architecture Overview
 
