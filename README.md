@@ -142,14 +142,14 @@ Payload: {
   - Payloads: `go_open`, `go_close`, `STOP`
 
 - **State Topic**: `dd-door/{deviceID}/state`
-  - Payloads: `opening`, `closing`, `open`, `closed`, `stopped`
+  - Payloads: `opening`, `closing`, `open`, `closed`
   - `opening`/`closing` is published as soon as a door starts moving — from
     `device.rate` when the cloud sends it, otherwise from a new cloud activity
     log entry — so remotes and wall buttons show up too, not only commands
     from Home Assistant. These are published directly (not through the FSM,
     whose opening/closing callbacks send a command to the door). The real
     `open`/`closed` state is re-published when the door reaches an end
-    position; a door that halts part-way is reported as `stopped`.
+    position; a door that halts part-way is reported as `open`, with the position published first.
 
 - **Activity Topic**: `dd-door/{deviceID}/activity`
   - Payload: text of each new cloud activity log entry, e.g.
