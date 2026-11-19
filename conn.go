@@ -2,6 +2,7 @@ package dd
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -44,6 +45,10 @@ const (
 	// RemoteTarget sends requests to the remote cloud API
 	RemoteTarget
 )
+
+// HTTPTimeout bounds every HTTP request, so an unresponsive device cannot hang the
+// caller forever (requests are made while holding the request mutex).
+const HTTPTimeout = 30 * time.Second
 
 var (
 	ErrTimeout = errors.New("RPC call timeout")
@@ -135,12 +140,7 @@ func (dc *Conn) SimpleRequest(arg SimpleRequest) error {
 	req.Header.Set("version", version)
 	req.Header.Set("platform", "android")
 
-	// Ensure HTTP client is initialized
-	if err := dc.ensureHTTPClient(); err != nil {
-		return err
-	}
-
-	resp, err := dc.client.Do(req)
+	resp, err := dc.httpClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
@@ -166,6 +166,9 @@ func (dc *Conn) SimpleRequest(arg SimpleRequest) error {
 			arg.Target, arg.Path, resp.Status, len(responseBytes))
 	}
 
+	if arg.Output == nil {
+		return nil
+	}
 	return json.Unmarshal(responseBytes, arg.Output)
 }
 
@@ -197,7 +200,10 @@ func (dc *Conn) genericRequest(greq *genericRequest) (*genericResponse, error) {
 	for _, message := range messages {
 		b, err := message.readData(dc.phoneSecret)
 		if err != nil {
-			return nil, err
+			// Skip just this message; the rest of the batch is still usable.
+			logger.WithError(err).WithField("processID", message.ProcessID).
+				Error("Failed to decode message, skipping")
+			continue
 		}
 
 		logger.WithFields(logrus.Fields{
@@ -208,7 +214,9 @@ func (dc *Conn) genericRequest(greq *genericRequest) (*genericResponse, error) {
 		message.DecodedMessage = b
 
 		if message.ProcessID == "" {
+			dc.pendingMutex.Lock()
 			dc.pendingMessages = append(dc.pendingMessages, message)
+			dc.pendingMutex.Unlock()
 			continue
 		}
 
@@ -304,21 +312,28 @@ func (dc *Conn) signedRequest(conf requestConfig) (*genericRequest, error) {
 	return greq, nil
 }
 
-// Close shuts down this Conn.
-// ensureHTTPClient initializes the HTTP client if it doesn't exist.
-func (dc *Conn) ensureHTTPClient() error {
+// httpClient returns the shared HTTP client, creating it on first use.
+func (dc *Conn) httpClient() *http.Client {
+	dc.clientMutex.Lock()
+	defer dc.clientMutex.Unlock()
 	if dc.client != nil {
-		return nil
+		return dc.client
 	}
 	customTransport := http.DefaultTransport.(*http.Transport).Clone()
-	// WARNING: For production, you should NOT use InsecureSkipVerify = true.
+	if customTransport.TLSClientConfig == nil {
+		customTransport.TLSClientConfig = &tls.Config{}
+	}
+	// Both the devices and the cloud API present certificates from SmartDoor's
+	// private CA (whose intermediate has expired), so verification is skipped.
 	customTransport.TLSClientConfig.InsecureSkipVerify = true
-	dc.client = &http.Client{Transport: customTransport}
-	return nil
+	dc.client = &http.Client{Transport: customTransport, Timeout: HTTPTimeout}
+	return dc.client
 }
 
 // Close shuts down this Conn.
 func (dc *Conn) Close() {
+	dc.clientMutex.Lock()
+	defer dc.clientMutex.Unlock()
 	if dc.client != nil {
 		dc.client.CloseIdleConnections()
 		dc.client = nil
@@ -326,7 +341,12 @@ func (dc *Conn) Close() {
 }
 
 // Connect passes credentials to the server and sets up secrets.
+// It may be called again on an existing Conn to establish a fresh session.
 func (dc *Conn) Connect(cred Credential) error {
+	// Hold the request lock so in-flight requests never see a half-updated session.
+	dc.genericRequestMutex.Lock()
+	defer dc.genericRequestMutex.Unlock()
+
 	// If dc.Debug == true, we allow Debug logs
 	if dc.Debug {
 		logger.SetLevel(logrus.DebugLevel)
@@ -335,7 +355,11 @@ func (dc *Conn) Connect(cred Credential) error {
 	}
 
 	dc.cred = cred
-	dc.unresolvedRPC = make(map[string]chan *Message)
+	dc.unresolvedMutex.Lock()
+	if dc.unresolvedRPC == nil {
+		dc.unresolvedRPC = make(map[string]chan *Message)
+	}
+	dc.unresolvedMutex.Unlock()
 
 	greq := &genericRequest{
 		Credential:        cred,
@@ -389,57 +413,33 @@ func (dc *Conn) internalMessages() error {
 	if err != nil {
 		return err
 	}
-	gresp, err := dc.genericRequest(greq)
-	if err != nil {
-		return err
-	}
-
-	messages, err := gresp.Messages()
-	if err != nil {
-		return err
-	}
-
-	logger.WithField("messageCount", len(messages)).Debug("Fetched messages")
-
-	for _, message := range messages {
-		logger.WithField("processID", message.ProcessID).Info("Processing message")
-
-		b, err := message.readData(dc.phoneSecret)
-		if err != nil {
-			logger.WithError(err).Error("Failed to decode message")
-			continue
-		}
-		message.DecodedMessage = b
-
-		if message.ProcessID != "" {
-			dc.unresolvedMutex.Lock()
-			if ch, exists := dc.unresolvedRPC[message.ProcessID]; exists {
-				ch <- message
-				delete(dc.unresolvedRPC, message.ProcessID)
-			}
-			dc.unresolvedMutex.Unlock()
-		} else {
-			dc.pendingMessages = append(dc.pendingMessages, message)
-		}
-	}
-
-	return nil
+	// genericRequest already queues status messages and resolves pending RPCs from
+	// the response, so there is nothing further to do here (processing the messages
+	// again would deliver every status message twice).
+	_, err = dc.genericRequest(greq)
+	return err
 }
 
 // Messages gets any pending status messages from the server.
 func (dc *Conn) Messages() ([]*Message, error) {
-	if len(dc.pendingMessages) == 0 {
+	dc.pendingMutex.Lock()
+	empty := len(dc.pendingMessages) == 0
+	dc.pendingMutex.Unlock()
+
+	if empty {
 		if err := dc.internalMessages(); err != nil {
 			return nil, err
 		}
 	}
 
+	dc.pendingMutex.Lock()
+	defer dc.pendingMutex.Unlock()
 	out := dc.pendingMessages
 	dc.pendingMessages = nil
 	return out, nil
 }
 
-// Request makes a signed generic RPC and waits until its response is available.
+// RPC makes a signed generic RPC and waits until its response is available.
 func (dc *Conn) RPC(rpc RPC) error {
 	var err error
 	var b []byte
@@ -459,18 +459,39 @@ func (dc *Conn) RPC(rpc RPC) error {
 		path = rpc.Path[1:]
 	}
 
+	ch := make(chan *Message, 1) // must have a buffer
+	var pid string
+	// Whatever happens, never leave our channel registered.
+	defer func() {
+		if pid != "" {
+			dc.unresolvedMutex.Lock()
+			delete(dc.unresolvedRPC, pid)
+			dc.unresolvedMutex.Unlock()
+		}
+	}()
+
 	// Wrap sign/send in inner fn so we can lock while it occurs.
-	resp, pid, err := func() (*genericResponse, string, error) {
+	resp, err := func() (*genericResponse, error) {
 		dc.genericRequestMutex.Lock()
 		defer dc.genericRequestMutex.Unlock()
 
 		greq, err := dc.signedRequest(requestConfig{data: b, path: path, requestIfOnline: true})
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 
-		resp, err := dc.genericRequest(greq)
-		return resp, greq.ProcessID, err
+		// Register for the reply before sending: once the request lock is released,
+		// another goroutine's poll may receive our response, and it would be dropped
+		// as unknown if we were not registered yet.
+		pid = greq.ProcessID
+		dc.unresolvedMutex.Lock()
+		if dc.unresolvedRPC == nil {
+			dc.unresolvedRPC = make(map[string]chan *Message)
+		}
+		dc.unresolvedRPC[pid] = ch
+		dc.unresolvedMutex.Unlock()
+
+		return dc.genericRequest(greq)
 	}()
 	if err != nil {
 		return err
@@ -481,7 +502,7 @@ func (dc *Conn) RPC(rpc RPC) error {
 	if resp.inlineResponse != nil {
 		responseBytes = resp.inlineResponse
 	} else {
-		responseBytes, err = dc.waitForPid(pid)
+		responseBytes, err = dc.waitForPid(pid, ch)
 		if err != nil {
 			return err
 		}
@@ -512,13 +533,9 @@ func (dc *Conn) RPC(rpc RPC) error {
 	return nil
 }
 
-// waitForPid waits for the server to respond with a matching processID.
-func (dc *Conn) waitForPid(pid string) ([]byte, error) {
-	ch := make(chan *Message, 1) // must have a buffer
-	dc.unresolvedMutex.Lock()
-	dc.unresolvedRPC[pid] = ch
-	dc.unresolvedMutex.Unlock()
-
+// waitForPid waits for the server to respond with a matching processID, which is
+// delivered on ch (already registered in unresolvedRPC by the caller).
+func (dc *Conn) waitForPid(pid string, ch chan *Message) ([]byte, error) {
 	logger.WithField("pid", pid).Debug("Delaying for process")
 
 	var calls int

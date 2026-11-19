@@ -24,6 +24,9 @@ type Conn struct {
 	cred   Credential   // cached creds
 	client *http.Client // cached optional client
 
+	clientMutex  sync.Mutex // guards client
+	pendingMutex sync.Mutex // guards pendingMessages
+
 	processID      string // random process ID to use in requests
 	sessionID      string // session ID returned from server
 	nextAccess     int    // the next timestamp to use (millis)

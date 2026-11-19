@@ -56,6 +56,7 @@ If you are using custom MQTT scripts or automations, the following topics are ex
 | `dd-door/<id>/state` | out | `open`, `closed`, `opening` or `closing` (a door stopped part-way is `open`) |
 | `dd-door/<id>/position` | out | Current position `0`-`100` |
 | `dd-door/<id>/availability` | out (retained) | `online` / `offline` |
+| `dd-door/bridge/availability` | out (retained) | `online` / `offline` for the bridge itself; set to `offline` by the broker (last will) if the add-on dies. Entities are available only while both this and the door's topic are `online` |
 | `dd-door/<id>/activity` | out | Text of every new entry in the door's cloud activity log, e.g. `Opening by Remote control`, `Daniel sent Close` |
 | `dd-door/<id>/alert` | out | Text of safety/fault log entries only, e.g. `Close Prevented as beam is blocked`, `Reversing`, `Open after Obstruction` |
 | `dd-door/<id>/command` | in | `go_open`, `go_close`, `STOP`, or `part_open_1`/`part_open_2`/`part_open_3` (the door's partial-open presets) |

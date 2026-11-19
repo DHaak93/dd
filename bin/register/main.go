@@ -39,14 +39,15 @@ func main() {
 		Output: &out,
 	})
 	if err != nil {
-		log.Fatalf("can't remoteregister: %+v %v", req, err)
+		// The request and response hold the password and secrets, so only the error is logged.
+		log.Fatalf("can't remoteregister: %v", err)
 	}
 
 	out.UserPassword = *flagPassword
 
 	err = helper.SaveCreds(*flagCredentialsPath, &out)
 	if err != nil {
-		log.Fatalf("can't encode and save response: %+v %v", out, err)
+		log.Fatalf("can't encode and save response: %v", err)
 	}
 
 	log.Printf("Ok! Saved encrypted credentials at: %v", *flagCredentialsPath)

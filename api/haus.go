@@ -20,6 +20,7 @@ const (
 	PositionTopicTemplate                          = "%s/%s/position"
 	SetPositionTopicTemplate                       = "%s/%s/set_position"
 	AvailabilityTopicTemplate                      = "%s/%s/availability"
+	BridgeAvailabilityTopicTemplate                = "%s/bridge/availability"
 	ActivityTopicTemplate                          = "%s/%s/activity"
 	AlertTopicTemplate                             = "%s/%s/alert"
 	HomeAssistantConfigTopicTemplate               = "homeassistant/cover/%s/config"
@@ -164,6 +165,31 @@ func (h *MQTTHandler) PublishStatus(prefix, deviceID, status string) error {
 	return h.publishToMQTT(topic, 0, false, status)
 }
 
+// BridgeAvailabilityTopic is the topic carrying the bridge's own availability. The
+// broker sets it to "offline" (MQTT last will) if the bridge dies unexpectedly.
+func BridgeAvailabilityTopic(prefix string) string {
+	return fmt.Sprintf(BridgeAvailabilityTopicTemplate, prefix)
+}
+
+// PublishBridgeAvailability publishes the bridge's own availability (retained).
+func (h *MQTTHandler) PublishBridgeAvailability(prefix, availability string) error {
+	return h.publishToMQTT(BridgeAvailabilityTopic(prefix), 1, true, availability)
+}
+
+// availabilityConfig makes an entity available only while both its door and
+// the bridge itself are online.
+func availabilityConfig(prefix, deviceID string) map[string]interface{} {
+	return map[string]interface{}{
+		"availability": []map[string]string{
+			{"topic": fmt.Sprintf(AvailabilityTopicTemplate, prefix, deviceID)},
+			{"topic": BridgeAvailabilityTopic(prefix)},
+		},
+		"availability_mode":     "all",
+		"payload_available":     "online",
+		"payload_not_available": "offline",
+	}
+}
+
 // PublishAvailability publishes a device's availability to the appropriate topic
 func (h *MQTTHandler) PublishAvailability(prefix, deviceID, availability string) error {
 	topic := fmt.Sprintf(AvailabilityTopicTemplate, prefix, deviceID)
@@ -213,33 +239,32 @@ func ConfigureDevice(handler *MQTTHandler, conn *dd.Conn, mqttPrefix string, dev
 	// Supported"), so no slider is offered. Partial opens use the preset
 	// buttons instead. The set_position topic is still handled for scripts.
 	configPayload := map[string]interface{}{
-		"name":                  device.Name,
-		"command_topic":         fmt.Sprintf(CommandTopicTemplate, mqttPrefix, device.ID),
-		"state_topic":           fmt.Sprintf(StateTopicTemplate, mqttPrefix, device.ID),
-		"position_topic":        fmt.Sprintf(PositionTopicTemplate, mqttPrefix, device.ID),
-		"availability_topic":    fmt.Sprintf(AvailabilityTopicTemplate, mqttPrefix, device.ID),
-		"availability_mode":     "latest",
-		"payload_open":          "go_open",
-		"payload_close":         "go_close",
-		"state_open":            "open",
-		"state_closed":          "closed",
-		"state_opening":         "opening",
-		"state_closing":         "closing",
-		"state_stopped":         StateStopped,
-		"payload_available":     "online",
-		"payload_not_available": "offline",
-		"position_open":         100,
-		"position_closed":       0,
-		"optimistic":            false,
-		"retain":                false,
-		"device_class":          "garage",
-		"unique_id":             fmt.Sprintf("cover_%s", device.ID),
+		"name":            device.Name,
+		"command_topic":   fmt.Sprintf(CommandTopicTemplate, mqttPrefix, device.ID),
+		"state_topic":     fmt.Sprintf(StateTopicTemplate, mqttPrefix, device.ID),
+		"position_topic":  fmt.Sprintf(PositionTopicTemplate, mqttPrefix, device.ID),
+		"payload_open":    "go_open",
+		"payload_close":   "go_close",
+		"state_open":      "open",
+		"state_closed":    "closed",
+		"state_opening":   "opening",
+		"state_closing":   "closing",
+		"state_stopped":   StateStopped,
+		"position_open":   100,
+		"position_closed": 0,
+		"optimistic":      false,
+		"retain":          false,
+		"device_class":    "garage",
+		"unique_id":       fmt.Sprintf("cover_%s", device.ID),
 		"device": map[string]interface{}{
 			"identifiers":  []string{fmt.Sprintf("garage_door_%s", device.ID)},
 			"name":         basicInfo.Name,
 			"manufacturer": "dd",
 		},
 		"icon": "mdi:garage",
+	}
+	for k, v := range availabilityConfig(mqttPrefix, device.ID) {
+		configPayload[k] = v
 	}
 
 	bytes, err := json.Marshal(configPayload)

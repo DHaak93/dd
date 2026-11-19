@@ -4,6 +4,27 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh9] - DHaak93 fork
+
+Reliability fixes ported from upstream 0.3.6 (gravypower/dd).
+
+### Added
+- The bridge reconnects to the SmartDoor cloud with backoff (5–60 s) when
+  the session is lost, instead of stopping. The doors show as unavailable in
+  Home Assistant meanwhile and catch up straight after reconnecting.
+- `<prefix>/bridge/availability` (retained, with an MQTT last will). The
+  doors and their buttons are only available while both the door and the
+  bridge are online, so they show as unavailable if the add-on dies.
+
+### Fixed
+- Every polled message was processed twice, so each status update was
+  handled twice.
+- A reply to a command could be lost if a status poll picked it up first;
+  the bridge now registers for the reply before sending.
+- An empty or truncated encrypted message no longer crashes the bridge.
+- Cloud requests time out after 30 s instead of hanging.
+- A failed registration no longer prints the password and secrets.
+
 ## [0.3.5-dh8] - DHaak93 fork
 
 ### Changed

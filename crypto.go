@@ -67,10 +67,15 @@ func NewDecCipher(key []byte, t int) (*cbcDecCipher, error) {
 	return out, nil
 }
 
-func (c *cbcDecCipher) Decrypt(src []byte) []byte {
+// Decrypt decrypts src, which must be a non-empty multiple of the AES block size.
+func (c *cbcDecCipher) Decrypt(src []byte) ([]byte, error) {
+	if len(src) == 0 || len(src)%c.block.BlockSize() != 0 {
+		return nil, fmt.Errorf("ciphertext length %d is not a non-zero multiple of the block size %d",
+			len(src), c.block.BlockSize())
+	}
 	decrypted := make([]byte, len(src))
 	c.cb.CryptBlocks(decrypted, src)
-	return PKCS5Trimming(decrypted)
+	return PKCS5Trimming(decrypted), nil
 }
 
 func PKCS5Padding(ciphertext []byte, blockSize int) []byte {
@@ -80,9 +85,13 @@ func PKCS5Padding(ciphertext []byte, blockSize int) []byte {
 }
 
 func PKCS5Trimming(encrypt []byte) []byte {
+	if len(encrypt) == 0 {
+		return encrypt
+	}
 	padding := encrypt[len(encrypt)-1]
 	if int(padding) > len(encrypt) || int(padding) <= 0 {
-		log.Printf("badly encoded CBC padding: %v (enc=%+v)", padding, encrypt)
+		// The buffer itself is not logged: it is decrypted payload data.
+		log.Printf("badly encoded CBC padding: %v (len=%d)", padding, len(encrypt))
 		return encrypt
 	}
 	return encrypt[:len(encrypt)-int(padding)]
@@ -141,7 +150,11 @@ func (dp *dataPayload) readData(key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode base64 encrypted data: %w", err)
 	}
-	return c.Decrypt(cipherBytes), nil
+	plain, err := c.Decrypt(cipherBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt data: %w", err)
+	}
+	return plain, nil
 }
 
 // unmarshalData is a convenience over readData, which unmarshals the payload via JSON.
