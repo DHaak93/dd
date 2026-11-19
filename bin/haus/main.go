@@ -446,6 +446,15 @@ func handleCommand(topic string, command string) {
 			logger.WithError(err).Error("Failed to process 'stop' event")
 		}
 	default:
+		// Partial-open presets (Pet, Parcel, ...). Sent straight to the
+		// door; the motion tracker reports the movement from its log entry.
+		if cmd, ok := ddapi.PartOpenCommand(command); ok {
+			ddapi.RecordCommand(deviceID, fmt.Sprintf("%d", cmd))
+			if err := ddapi.SafeCommand(deviceFSM.Conn, deviceID, cmd); err != nil {
+				logger.WithError(err).WithFields(logrus.Fields{"deviceID": deviceID, "command": command}).Error("Failed to send partial open command")
+			}
+			return
+		}
 		logger.WithFields(logrus.Fields{
 			"deviceID": deviceID,
 			"command":  command}).Warn("Unknown command for device")
@@ -506,6 +515,9 @@ func handleSetPosition(topic string, positionStr string) {
 			"command":  cmd,
 			"error":    err,
 		}).Error("Failed to execute position command")
+		if strings.Contains(err.Error(), "Not Supported") {
+			logger.WithField("deviceID", deviceID).Warn("This door doesn't accept set positions; use its partial open buttons (e.g. Pet, Parcel) instead")
+		}
 		return
 	}
 
