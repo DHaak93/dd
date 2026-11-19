@@ -1,5 +1,7 @@
 # Home Assistant Add-on Updates Summary
 
+> **Historical note:** this file records the original project's December 2025 update and refers to `gravypower/dd`. For this fork's changes, see [dd/CHANGELOG.md](dd/CHANGELOG.md).
+
 This document details all updates made to bring the SmartDoor add-on configuration up to the latest Home Assistant best practices (verified December 2025).
 
 ## Research Sources
