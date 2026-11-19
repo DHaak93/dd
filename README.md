@@ -200,9 +200,7 @@ Transitions:
 - **Stop** (3) - Stop door movement
 
 ### Position Control ⭐ NEW
-The add-on now supports precise position control via Home Assistant's position slider!
-
-**Slider Control:** Set any position from 0% (closed) to 100% (open) with 5% granularity, on doors that accept it. Some (e.g. the GDO6V4) reject in-between positions ("Not Supported"); use the partial-open buttons there.
+Home Assistant shows the door's position but offers no slider: the doors tested (e.g. the GDO6V4) reject in-between positions ("Not Supported"). Use the partial-open buttons below. The `set_position` topic still accepts positions from 0% (closed) to 100% (open) in 5% steps for scripts, on doors that accept them.
 
 **Common Use Cases:**
 - **Pet Mode** (20%) - Perfect height for pets
@@ -216,7 +214,7 @@ See [POSITION_CONTROL.md](POSITION_CONTROL.md) for detailed usage and examples.
 
 ### Partial Opens (Pet / Parcel / Ventilation)
 
-Published as Home Assistant buttons named as in the SmartDoor/ATA app; also `part_open_1`-`part_open_3` on the command topic.
+Published as Home Assistant buttons, named as in the SmartDoor/ATA app when the door reports the names (otherwise "Partial open 1–3"); see DOCS.md for a card that puts them under the cover. Also `part_open_1`-`part_open_3` on the command topic.
 
 - **PartOpen1** (5) - Pet mode (~20%)
 - **PartOpen2** (6) - Parcel mode (~68%)

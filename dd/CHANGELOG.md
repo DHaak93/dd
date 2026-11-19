@@ -4,6 +4,16 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.5-dh8] - DHaak93 fork
+
+### Changed
+- The cover no longer has a position slider in Home Assistant. Its position
+  is still shown, but the doors reject in-between positions, so the slider
+  only ever worked for fully open or closed. Use the open/close buttons and
+  the partial-open buttons instead. `set_position` still works over MQTT for
+  scripts. DOCS.md has an example card with the partial-open buttons under
+  the cover.
+
 ## [0.3.5-dh7] - DHaak93 fork
 
 ### Added

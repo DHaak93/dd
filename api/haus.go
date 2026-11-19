@@ -208,12 +208,15 @@ func (h *MQTTHandler) RemoveEntity(deviceID string) error {
 // ConfigureDevice publishes the Home Assistant MQTT cover configuration
 func ConfigureDevice(handler *MQTTHandler, conn *dd.Conn, mqttPrefix string, device DoorStatusDevice, basicInfo BasicInfo) *DeviceFSM {
 	configTopic := fmt.Sprintf(HomeAssistantConfigTopicTemplate, device.ID)
+	// Position is reported but not settable from Home Assistant (no
+	// set_position_topic): the doors reject in-between positions ("Not
+	// Supported"), so no slider is offered. Partial opens use the preset
+	// buttons instead. The set_position topic is still handled for scripts.
 	configPayload := map[string]interface{}{
 		"name":                  device.Name,
 		"command_topic":         fmt.Sprintf(CommandTopicTemplate, mqttPrefix, device.ID),
 		"state_topic":           fmt.Sprintf(StateTopicTemplate, mqttPrefix, device.ID),
 		"position_topic":        fmt.Sprintf(PositionTopicTemplate, mqttPrefix, device.ID),
-		"set_position_topic":    fmt.Sprintf(SetPositionTopicTemplate, mqttPrefix, device.ID),
 		"availability_topic":    fmt.Sprintf(AvailabilityTopicTemplate, mqttPrefix, device.ID),
 		"availability_mode":     "latest",
 		"payload_open":          "go_open",
