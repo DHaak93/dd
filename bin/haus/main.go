@@ -26,6 +26,12 @@ const (
 	OPEN = 100
 )
 
+// Reconnect backoff bounds for a lost SmartDoor session.
+const (
+	reconnectMinDelay = 5 * time.Second
+	reconnectMaxDelay = 60 * time.Second
+)
+
 // Logger setup
 var logger = logrus.New()
 
@@ -128,12 +134,16 @@ func main() {
 				logger.WithField("deviceID", deviceID).Info("Device successfully set to offline")
 			}
 		}
+		// A clean disconnect doesn't fire the last will, so say goodbye explicitly.
+		if err := mqttHandler.PublishBridgeAvailability(*flagMqttPrefix, "offline"); err != nil {
+			logger.WithError(err).Warn("Failed to publish bridge offline status")
+		}
 		mqttClient.Disconnect(250)
 		os.Exit(0)
 	}()
 
 	statusCh := make(chan ddapi.DoorStatus)
-	go handleStatusUpdates(ctx, &ddConn, statusCh)
+	go handleStatusUpdates(ctx, &ddConn, credentials.Credential, statusCh)
 
 	motion := ddapi.NewMotionTracker()
 
@@ -325,8 +335,14 @@ func connectToMQTT(broker, user, password string, port int) mqtt.Client {
 	// Enable persistent session and automatic resubscription
 	opts.SetCleanSession(false)
 	opts.SetResumeSubs(true)
+	// Last will: if we die without a clean disconnect, the broker marks the
+	// bridge (and so every door) unavailable in Home Assistant.
+	bridgeTopic := ddapi.BridgeAvailabilityTopic(*flagMqttPrefix)
+	opts.SetWill(bridgeTopic, "offline", 1, true)
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		logger.Info("Connected to MQTT broker")
+		// Not waited on: blocking inside this callback can stall the client.
+		c.Publish(bridgeTopic, 1, true, "online")
 		// Subscribe (or resubscribe) on every (re)connect
 		subscribeToMQTTCommandTopics(ddapi.NewMQTTHandler(c, logger), *flagMqttPrefix)
 	})
@@ -528,13 +544,30 @@ func handleSetPosition(topic string, positionStr string) {
 	}).Info("Position command executed successfully")
 }
 
-func handleStatusUpdates(ctx context.Context, conn *dd.Conn, statusCh chan ddapi.DoorStatus) {
+// sendStatus delivers a status unless we're shutting down.
+func sendStatus(ctx context.Context, statusCh chan<- ddapi.DoorStatus, status *ddapi.DoorStatus) {
+	select {
+	case statusCh <- *status:
+	case <-ctx.Done():
+	}
+}
+
+// triggerAll fires an event on every known device.
+func triggerAll(event string) {
+	for deviceID, fsm := range ddapi.GetAllDeviceFSMs() {
+		if err := fsm.Trigger(context.Background(), event); err != nil {
+			logger.WithError(err).WithField("deviceID", deviceID).Debugf("Could not process '%s' event", event)
+		}
+	}
+}
+
+func handleStatusUpdates(ctx context.Context, conn *dd.Conn, cred dd.Credential, statusCh chan ddapi.DoorStatus) {
 	status, err := ddapi.SafeFetchStatus(conn)
 	if err != nil {
 		logger.WithError(err).Error("Failed to fetch initial status")
 		// Continue even if initial fetch fails - messages loop may recover
 	} else {
-		statusCh <- *status
+		sendStatus(ctx, statusCh, status)
 	}
 
 	// Periodically poll the actual door status to self-heal state desynchronization
@@ -552,16 +585,55 @@ func handleStatusUpdates(ctx context.Context, conn *dd.Conn, statusCh chan ddapi
 					if err != nil {
 						logger.WithError(err).Error("Failed to poll door status")
 					} else {
-						statusCh <- *status
+						sendStatus(ctx, statusCh, status)
 					}
 				}
 			}
 		}()
 	}
 
-	if err := helper.LoopMessages(ctx, conn, statusCh); err != nil {
-		logger.WithError(err).Error("Error reading messages - connection may be lost")
-		// Allow graceful shutdown instead of Fatal
-		close(statusCh)
+	// Read messages until shutdown. If the session is lost (hub rebooted,
+	// network blip, session expired), reconnect with backoff instead of
+	// stopping the bridge.
+	for {
+		err := helper.LoopMessages(ctx, conn, statusCh)
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		logger.WithError(err).Error("Error reading messages - connection may be lost; reconnecting")
+
+		delay := reconnectMinDelay
+		markedOffline := false
+		for {
+			err := conn.Connect(cred)
+			if err == nil {
+				break
+			}
+			logger.WithError(err).WithField("retryIn", delay).Warn("Reconnect to dd failed")
+			if !markedOffline {
+				// Tell Home Assistant the doors are unavailable while we can't reach them.
+				triggerAll("go_offline")
+				markedOffline = true
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			if delay *= 2; delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+		}
+		logger.Info("Reconnected to dd")
+		if markedOffline {
+			triggerAll("go_online")
+		}
+
+		// Resynchronise door state straight away.
+		if status, err := ddapi.SafeFetchStatus(conn); err != nil {
+			logger.WithError(err).Error("Failed to fetch status after reconnect")
+		} else {
+			sendStatus(ctx, statusCh, status)
+		}
 	}
 }

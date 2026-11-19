@@ -223,7 +223,10 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDecCipher() error = %v", err)
 	}
-	decrypted := decCipher.Decrypt(ciphertext)
+	decrypted, err := decCipher.Decrypt(ciphertext)
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
 
 	// Compare
 	if string(decrypted) != string(plaintext) {

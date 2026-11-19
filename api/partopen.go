@@ -76,19 +76,19 @@ func publishPartOpenButtons(handler *MQTTHandler, mqttPrefix string, device Door
 
 	for _, p := range PartOpenButtons(device.Buttons) {
 		payload := map[string]interface{}{
-			"name":                  p.Title,
-			"command_topic":         fmt.Sprintf(CommandTopicTemplate, mqttPrefix, device.ID),
-			"payload_press":         p.Key,
-			"availability_topic":    fmt.Sprintf(AvailabilityTopicTemplate, mqttPrefix, device.ID),
-			"payload_available":     "online",
-			"payload_not_available": "offline",
-			"unique_id":             fmt.Sprintf("button_%s_%s", device.ID, p.Key),
-			"icon":                  "mdi:garage-open-variant",
+			"name":          p.Title,
+			"command_topic": fmt.Sprintf(CommandTopicTemplate, mqttPrefix, device.ID),
+			"payload_press": p.Key,
+			"unique_id":     fmt.Sprintf("button_%s_%s", device.ID, p.Key),
+			"icon":          "mdi:garage-open-variant",
 			"device": map[string]interface{}{
 				"identifiers":  []string{fmt.Sprintf("garage_door_%s", device.ID)},
 				"name":         basicInfo.Name,
 				"manufacturer": "dd",
 			},
+		}
+		for k, v := range availabilityConfig(mqttPrefix, device.ID) {
+			payload[k] = v
 		}
 		bytes, err := json.Marshal(payload)
 		if err != nil {

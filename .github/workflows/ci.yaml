@@ -1,8 +1,7 @@
 name: CI
 
-# Replaces the inherited Builder workflow, which used the retired
-# home-assistant/builder action and published images to ghcr.io. This fork
-# builds the add-on locally in Home Assistant, so CI only checks the Go code.
+# Checks the Go code (formatting, vet, tests with the race detector).
+# Images are built and published by the Release workflow.
 
 on:
   push:
